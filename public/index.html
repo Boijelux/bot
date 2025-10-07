@@ -1,0 +1,296 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Bitget Arbitrage Dashboard — Spot & Futures</title>
+
+  <!-- Tailwind CDN (for quick deploy). For production, consider building Tailwind properly. -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    /* tiny additional styling */
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, 'Roboto Mono', 'Courier New', monospace; }
+    .log { height: 280px; overflow:auto; background:#031025; color:#9ec0da; padding:12px; border-radius:8px; }
+  </style>
+</head>
+<body class="bg-gradient-to-b from-slate-900 to-slate-950 text-slate-100 min-h-screen">
+  <div class="max-w-5xl mx-auto p-6">
+    <header class="flex items-center justify-between mb-6">
+      <h1 class="text-xl font-semibold">Bitget Arbitrage Dashboard</h1>
+      <div class="text-sm text-slate-400">Spot ↔ Spot • Spot ↔ Futures • Futures ↔ Futures • Bitget only</div>
+    </header>
+
+    <section class="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <!-- Controls -->
+      <div class="md:col-span-1 bg-slate-800 p-4 rounded-lg">
+        <div class="mb-3">
+          <label class="block text-xs text-slate-400">Symbol</label>
+          <select id="symbol" class="mt-1 w-full bg-slate-900 p-2 rounded text-sm">
+            <option>BTC/USDT</option>
+            <option>ETH/USDT</option>
+            <option>BNB/USDT</option>
+          </select>
+        </div>
+
+        <div class="mb-3">
+          <label class="block text-xs text-slate-400">Mode</label>
+          <select id="mode" class="mt-1 w-full bg-slate-900 p-2 rounded text-sm">
+            <option value="spot-spot">Spot ↔ Spot (two spot markets)</option>
+            <option value="spot-fut">Spot ↔ Futures (spot vs futures)</option>
+            <option value="fut-fut">Futures ↔ Futures (two futures markets)</option>
+          </select>
+        </div>
+
+        <div class="mb-3">
+          <label class="block text-xs text-slate-400">Market A</label>
+          <select id="marketA" class="mt-1 w-full bg-slate-900 p-2 rounded text-sm">
+            <option value="spot">Spot (Bitget Spot)</option>
+            <option value="future">Futures (Bitget Mix/Futures)</option>
+          </select>
+        </div>
+
+        <div class="mb-3">
+          <label class="block text-xs text-slate-400">Market B</label>
+          <select id="marketB" class="mt-1 w-full bg-slate-900 p-2 rounded text-sm">
+            <option value="spot">Spot (Bitget Spot)</option>
+            <option value="future">Futures (Bitget Mix/Futures)</option>
+          </select>
+        </div>
+
+        <div class="mb-3">
+          <label class="block text-xs text-slate-400">Poll Interval (ms)</label>
+          <input id="pollMs" type="number" value="2000" class="mt-1 w-full bg-slate-900 p-2 rounded text-sm" />
+        </div>
+
+        <div class="flex gap-2 mt-2">
+          <button id="startBtn" class="flex-1 bg-cyan-500 hover:bg-cyan-400 text-slate-900 font-semibold p-2 rounded">Start</button>
+          <button id="stopBtn" disabled class="flex-1 bg-slate-700 text-slate-300 p-2 rounded">Stop</button>
+        </div>
+
+        <div class="mt-3 text-xs text-slate-400 space-y-1">
+          <div>Data source: Bitget public APIs.</div>
+          <div>If you see CORS errors, enable the included serverless proxy (api/proxy.js) on Vercel.</div>
+        </div>
+      </div>
+
+      <!-- Market panels -->
+      <div class="bg-slate-800 p-4 rounded-lg">
+        <div class="flex items-center justify-between mb-2">
+          <div class="text-xs text-slate-400">Market A</div>
+          <div id="metaA" class="text-xs text-slate-400 mono">-</div>
+        </div>
+        <div class="text-3xl font-semibold" id="priceA">—</div>
+        <div class="text-sm text-slate-400 mt-2">Updated: <span id="tsA">—</span></div>
+        <div class="mt-4 text-xs text-slate-300 log" id="logA">No data yet.</div>
+      </div>
+
+      <div class="bg-slate-800 p-4 rounded-lg">
+        <div class="flex items-center justify-between mb-2">
+          <div class="text-xs text-slate-400">Market B</div>
+          <div id="metaB" class="text-xs text-slate-400 mono">-</div>
+        </div>
+        <div class="text-3xl font-semibold" id="priceB">—</div>
+        <div class="text-sm text-slate-400 mt-2">Updated: <span id="tsB">—</span></div>
+        <div class="mt-4 text-xs text-slate-300 log" id="logB">No data yet.</div>
+      </div>
+
+      <!-- Spread card (full width) -->
+      <div class="md:col-span-3 bg-slate-800 p-4 rounded-lg">
+        <div class="flex items-center justify-between">
+          <div>
+            <div class="text-xs text-slate-400">Spread</div>
+            <div class="text-2xl font-semibold mt-1"><span id="spreadAbs">—</span> USD</div>
+            <div class="text-sm text-slate-300 mt-1">Percent: <span id="spreadPct">—</span> %</div>
+          </div>
+
+          <div class="text-right">
+            <div class="text-xs text-slate-400">Threshold (USD)</div>
+            <input id="threshold" type="number" value="20" class="mt-1 w-28 bg-slate-900 p-2 rounded text-sm text-right" />
+            <div class="mt-3">
+              <div class="inline-block px-3 py-2 rounded text-sm font-semibold" id="actionBadge">—</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="mt-4">
+          <div class="text-xs text-slate-400 mb-2">Event Log</div>
+          <div class="log mono" id="eventLog">No events yet.</div>
+        </div>
+      </div>
+    </section>
+
+    <footer class="mt-6 text-sm text-slate-500">
+      Tip: Deploy to Vercel as a static site. If Bitget blocks direct browser requests, enable the optional serverless proxy (api/proxy.js).
+    </footer>
+  </div>
+
+<script>
+(() => {
+  // Basic Bitget adapters and dashboard logic
+  const el = id => document.getElementById(id);
+  let running = false;
+  let loop = null;
+
+  // Helper: attempt direct fetch, fall back to /api/proxy?url=...
+  async function fetchWithProxy(url) {
+    try {
+      const res = await fetch(url, { cache: "no-store" });
+      if (!res.ok) throw new Error('non-ok');
+      const json = await res.json();
+      return { ok: true, json };
+    } catch (e) {
+      // fallback to proxy if available
+      try {
+        const prox = '/api/proxy?url=' + encodeURIComponent(url);
+        const r2 = await fetch(prox);
+        if (!r2.ok) throw new Error('proxy failed');
+        const j2 = await r2.json();
+        return { ok: true, json: j2 };
+      } catch (err) {
+        return { ok: false, error: err.message || err };
+      }
+    }
+  }
+
+  // Bitget spot ticker URL (public)
+  function bitgetSpotTicker(symbol) {
+    // convert BTC/USDT -> BTCUSDT
+    const pair = symbol.replace('/', '');
+    return `https://api.bitget.com/api/spot/v1/market/ticker?symbol=${pair}`;
+  }
+
+  // Bitget mix/futures ticker URL (public)
+  function bitgetFutTicker(symbol) {
+    // Bitget has various futures naming conventions; try common ones:
+    // 1) pair as-is: BTCUSDT (some endpoints expect suffix like _UMCBL)
+    // We'll attempt several endpoints and fall back.
+    const pair = symbol.replace('/', '');
+    // Official mix ticker endpoint:
+    return `https://api.bitget.com/api/mix/v1/market/ticker?symbol=${pair}`;
+  }
+
+  async function parseSpotTickerResponse(json) {
+    // Bitget spot often returns { code: '00000', data: { last: '...' } }
+    if (!json) return null;
+    const data = json.data || json;
+    // try various shapes
+    const last = data.last || data.lastPrice || (Array.isArray(data) && data[0]?.last) || data.close;
+    if (last) return parseFloat(last);
+    // sometimes object array contains fields
+    if (Array.isArray(json) && json[0] && json[0].last) return parseFloat(json[0].last);
+    return null;
+  }
+
+  async function parseFutTickerResponse(json) {
+    // Bitget mix response shapes vary: { code:'00000', data: { last: '...' } } or { data: { close: ... } }
+    if (!json) return null;
+    const data = json.data || json;
+    const last = data.last || data.close || data.price || (Array.isArray(data) && data[0]?.last);
+    if (last) return parseFloat(last);
+    return null;
+  }
+
+  async function fetchPrice(marketType, symbol) {
+    if (marketType === 'spot') {
+      const url = bitgetSpotTicker(symbol);
+      const r = await fetchWithProxy(url);
+      if (!r.ok) throw new Error('Spot fetch failed: ' + (r.error || 'unknown'));
+      const price = await parseSpotTickerResponse(r.json);
+      if (price == null) throw new Error('Spot parse failed');
+      return { price, ts: Date.now(), raw: r.json };
+    } else {
+      const url = bitgetFutTicker(symbol);
+      const r = await fetchWithProxy(url);
+      if (!r.ok) throw new Error('Fut fetch failed: ' + (r.error || 'unknown'));
+      const price = await parseFutTickerResponse(r.json);
+      if (price == null) throw new Error('Fut parse failed');
+      return { price, ts: Date.now(), raw: r.json };
+    }
+  }
+
+  function appendLog(elId, msg) {
+    const node = el(elId);
+    const t = new Date().toLocaleTimeString();
+    node.textContent = `${t} ${msg}\n` + node.textContent;
+  }
+
+  async function tickOnce() {
+    const symbol = el('symbol').value;
+    const marketA = el('marketA').value; // 'spot' or 'future'
+    const marketB = el('marketB').value;
+    try {
+      const [a, b] = await Promise.allSettled([fetchPrice(marketA, symbol), fetchPrice(marketB, symbol)]);
+      if (a.status === 'fulfilled') {
+        el('priceA').textContent = a.value.price.toFixed(2);
+        el('tsA').textContent = new Date(a.value.ts).toLocaleTimeString();
+        el('metaA').textContent = marketA === 'spot' ? 'Bitget Spot' : 'Bitget Futures';
+        appendLog('logA', `price ${a.value.price.toFixed(2)}`);
+      } else {
+        el('priceA').textContent = '—';
+        el('metaA').textContent = 'err';
+        appendLog('logA', `err: ${a.reason?.message || a.reason}`);
+      }
+
+      if (b.status === 'fulfilled') {
+        el('priceB').textContent = b.value.price.toFixed(2);
+        el('tsB').textContent = new Date(b.value.ts).toLocaleTimeString();
+        el('metaB').textContent = marketB === 'spot' ? 'Bitget Spot' : 'Bitget Futures';
+        appendLog('logB', `price ${b.value.price.toFixed(2)}`);
+      } else {
+        el('priceB').textContent = '—';
+        el('metaB').textContent = 'err';
+        appendLog('logB', `err: ${b.reason?.message || b.reason}`);
+      }
+
+      if (a.status === 'fulfilled' && b.status === 'fulfilled') {
+        const pA = a.value.price;
+        const pB = b.value.price;
+        const abs = Math.abs(pA - pB);
+        const pct = (abs / ((pA + pB) / 2)) * 100;
+        el('spreadAbs').textContent = abs.toFixed(2);
+        el('spreadPct').textContent = pct.toFixed(4);
+
+        const threshold = parseFloat(el('threshold').value || '20');
+        if (abs >= threshold) {
+          el('actionBadge').textContent = 'OPPORTUNITY';
+          el('actionBadge').className = 'inline-block px-3 py-2 rounded text-sm font-semibold bg-emerald-500 text-slate-900';
+          appendLog('eventLog', `ALERT: spread ${abs.toFixed(2)} (${pct.toFixed(4)}%) between ${marketA} & ${marketB}`);
+        } else {
+          el('actionBadge').textContent = 'No opportunity';
+          el('actionBadge').className = 'inline-block px-3 py-2 rounded text-sm font-semibold bg-slate-700 text-slate-200';
+        }
+      } else {
+        el('spreadAbs').textContent = '—';
+        el('spreadPct').textContent = '—';
+        el('actionBadge').textContent = 'Waiting...';
+        el('actionBadge').className = 'inline-block px-3 py-2 rounded text-sm font-semibold bg-yellow-600 text-slate-900';
+      }
+    } catch (e) {
+      appendLog('eventLog', 'Tick error: ' + (e.message || e));
+    }
+  }
+
+  el('startBtn').addEventListener('click', () => {
+    if (running) return;
+    running = true;
+    el('startBtn').disabled = true;
+    el('stopBtn').disabled = false;
+    const ms = parseInt(el('pollMs').value || '2000');
+    tickOnce();
+    loop = setInterval(tickOnce, ms);
+    appendLog('eventLog', `Started polling every ${ms}ms`);
+  });
+
+  el('stopBtn').addEventListener('click', () => {
+    if (!running) return;
+    running = false;
+    el('startBtn').disabled = false;
+    el('stopBtn').disabled = true;
+    clearInterval(loop);
+    appendLog('eventLog', `Stopped`);
+  });
+
+})();
+</script>
+</body>
+</html>
