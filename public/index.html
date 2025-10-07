@@ -125,6 +125,10 @@
   </div>
 
 <script>
+  const api = `/api/price?symbol=${symbol.replace('/', '')}&type=${mode}`;
+const r = await fetch(api);
+const data = await r.json();
+
 (() => {
   // Basic Bitget adapters and dashboard logic
   const el = id => document.getElementById(id);
