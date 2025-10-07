@@ -1,51 +1,63 @@
 // api/price.js
-import fetch from "node-fetch";
+import fetch from 'node-fetch';
 
 export default async function handler(req, res) {
-  const symbol = (req.query.symbol || "BTCUSDT").toUpperCase();
-  const type = req.query.type || "spot-future"; // spot-spot, spot-future, future-future
-
   try {
-    // Bitget endpoints
-    const spotUrl = `https://api.bitget.com/api/spot/v1/market/ticker?symbol=${symbol}`;
-    const futUrl = `https://api.bitget.com/api/mix/v1/market/ticker?symbol=${symbol}_UMCBL`;
+    const qsSymbol = req.query.symbol || 'BTC/USDT';
+    // Accept symbol either like BTC/USDT or BTCUSDT
+    const symbol = qsSymbol.includes('/') ? qsSymbol.replace('/', '') : qsSymbol;
+    const type = (req.query.type || 'spot-future').toLowerCase(); // spot-spot, spot-future, future-future
 
-    let urls = [];
-    if (type === "spot-spot") urls = [spotUrl, spotUrl];
-    else if (type === "spot-future") urls = [spotUrl, futUrl];
-    else if (type === "future-future") urls = [futUrl, futUrl];
-    else {
-      res.status(400).json({ error: "Invalid type" });
-      return;
+    // Bitget endpoints (server-side fetch — no CORS)
+    const spotUrl = `https://api.bitget.com/api/spot/v1/market/ticker?symbol=${symbol}`;
+    // Bitget mix futures endpoint tends to return close/last in data
+    const futUrl = `https://api.bitget.com/api/mix/v1/market/ticker?symbol=${symbol}`;
+
+    let urlA, urlB;
+    if (type === 'spot-spot') {
+      urlA = spotUrl; urlB = spotUrl;
+    } else if (type === 'spot-future') {
+      urlA = spotUrl; urlB = futUrl;
+    } else if (type === 'future-future') {
+      urlA = futUrl; urlB = futUrl;
+    } else {
+      return res.status(400).json({ error: 'invalid type' });
     }
 
-    const [rA, rB] = await Promise.all(urls.map((u) => fetch(u).then((r) => r.json())));
+    const [rA, rB] = await Promise.all([fetch(urlA), fetch(urlB)]);
+    const jA = await rA.json().catch(() => null);
+    const jB = await rB.json().catch(() => null);
 
-    const pA =
-      parseFloat(rA.data?.last || rA.data?.close || rA.data?.price) || null;
-    const pB =
-      parseFloat(rB.data?.last || rB.data?.close || rB.data?.price) || null;
+    const parsePrice = (j) => {
+      if (!j) return null;
+      const d = j.data || j;
+      const last = parseFloat(d.last || d.close || d.lastPrice || (Array.isArray(d) && d[0]?.last));
+      if (!isNaN(last)) return last;
+      return null;
+    };
 
-    if (!pA || !pB) {
-      res.status(500).json({ error: "Failed to get valid prices", rA, rB });
-      return;
+    const pA = parsePrice(jA);
+    const pB = parsePrice(jB);
+
+    if (pA == null || pB == null) {
+      return res.status(502).json({ error: 'failed to parse bitget response', pA, pB, jA, jB });
     }
 
     const abs = Math.abs(pA - pB);
     const pct = (abs / ((pA + pB) / 2)) * 100;
 
-    res.status(200).json({
+    res.setHeader('Cache-Control', 'no-store');
+    return res.json({
       symbol,
       type,
-      marketA: urls[0],
-      marketB: urls[1],
       priceA: pA,
       priceB: pB,
-      spreadAbs: abs,
-      spreadPct: pct.toFixed(4),
-      timestamp: Date.now(),
+      spreadAbs: Number(abs.toFixed(8)),
+      spreadPct: Number(pct.toFixed(6)),
+      ts: Date.now()
     });
   } catch (err) {
-    res.status(500).json({ error: err.message || "Unknown error" });
+    console.error('price error', err);
+    return res.status(500).json({ error: err.message || String(err) });
   }
 }
