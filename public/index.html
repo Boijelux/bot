@@ -1,297 +1,173 @@
 <!doctype html>
-<html lang="en">
+<html>
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Bitget Arbitrage Dashboard — Spot & Futures</title>
-
-  <!-- Tailwind CDN (for quick deploy). For production, consider building Tailwind properly. -->
+  <title>Bitget Arb (Vercel) — Uses your API (server-side)</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <style>
-    /* tiny additional styling */
-    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, 'Roboto Mono', 'Courier New', monospace; }
-    .log { height: 280px; overflow:auto; background:#031025; color:#9ec0da; padding:12px; border-radius:8px; }
-  </style>
+  <style>.log{height:200px;overflow:auto;background:#021020;padding:10px;color:#9fd0ea;border-radius:6px}</style>
 </head>
-<body class="bg-gradient-to-b from-slate-900 to-slate-950 text-slate-100 min-h-screen">
-  <div class="max-w-5xl mx-auto p-6">
-    <header class="flex items-center justify-between mb-6">
-      <h1 class="text-xl font-semibold">Bitget Arbitrage Dashboard</h1>
-      <div class="text-sm text-slate-400">Spot ↔ Spot • Spot ↔ Futures • Futures ↔ Futures • Bitget only</div>
-    </header>
+<body class="bg-slate-900 text-slate-100 min-h-screen flex items-start">
+  <div class="max-w-5xl mx-auto p-6 w-full">
+    <h1 class="text-2xl mb-4">Bitget Arbitrage Dashboard (Server-side API Keys)</h1>
 
-    <section class="grid grid-cols-1 md:grid-cols-3 gap-4">
-      <!-- Controls -->
-      <div class="md:col-span-1 bg-slate-800 p-4 rounded-lg">
-        <div class="mb-3">
-          <label class="block text-xs text-slate-400">Symbol</label>
-          <select id="symbol" class="mt-1 w-full bg-slate-900 p-2 rounded text-sm">
-            <option>BTC/USDT</option>
-            <option>ETH/USDT</option>
-            <option>BNB/USDT</option>
-          </select>
+    <div class="grid md:grid-cols-3 gap-4">
+      <div class="p-4 bg-slate-800 rounded">
+        <label class="block text-sm text-slate-400">Symbol</label>
+        <input id="symbol" class="mt-1 w-full p-2 bg-slate-900 rounded" value="BTC/USDT" />
+        <label class="block mt-2 text-sm text-slate-400">Mode</label>
+        <select id="type" class="mt-1 w-full p-2 bg-slate-900 rounded">
+          <option value="spot-future">Spot ↔ Futures</option>
+          <option value="spot-spot">Spot ↔ Spot</option>
+          <option value="future-future">Futures ↔ Futures</option>
+        </select>
+        <label class="block mt-2 text-sm text-slate-400">Poll ms</label>
+        <input id="poll" value="2000" class="mt-1 w-full p-2 bg-slate-900 rounded"/>
+
+        <div class="flex gap-2 mt-3">
+          <button id="start" class="flex-1 bg-cyan-500 p-2 rounded text-slate-900 font-semibold">Start</button>
+          <button id="stop" disabled class="flex-1 bg-slate-700 p-2 rounded">Stop</button>
         </div>
 
-        <div class="mb-3">
-          <label class="block text-xs text-slate-400">Mode</label>
-          <select id="mode" class="mt-1 w-full bg-slate-900 p-2 rounded text-sm">
-            <option value="spot-spot">Spot ↔ Spot (two spot markets)</option>
-            <option value="spot-fut">Spot ↔ Futures (spot vs futures)</option>
-            <option value="fut-fut">Futures ↔ Futures (two futures markets)</option>
-          </select>
-        </div>
-
-        <div class="mb-3">
-          <label class="block text-xs text-slate-400">Market A</label>
-          <select id="marketA" class="mt-1 w-full bg-slate-900 p-2 rounded text-sm">
-            <option value="spot">Spot (Bitget Spot)</option>
-            <option value="future">Futures (Bitget Mix/Futures)</option>
-          </select>
-        </div>
-
-        <div class="mb-3">
-          <label class="block text-xs text-slate-400">Market B</label>
-          <select id="marketB" class="mt-1 w-full bg-slate-900 p-2 rounded text-sm">
-            <option value="spot">Spot (Bitget Spot)</option>
-            <option value="future">Futures (Bitget Mix/Futures)</option>
-          </select>
-        </div>
-
-        <div class="mb-3">
-          <label class="block text-xs text-slate-400">Poll Interval (ms)</label>
-          <input id="pollMs" type="number" value="2000" class="mt-1 w-full bg-slate-900 p-2 rounded text-sm" />
-        </div>
-
-        <div class="flex gap-2 mt-2">
-          <button id="startBtn" class="flex-1 bg-cyan-500 hover:bg-cyan-400 text-slate-900 font-semibold p-2 rounded">Start</button>
-          <button id="stopBtn" disabled class="flex-1 bg-slate-700 text-slate-300 p-2 rounded">Stop</button>
-        </div>
-
-        <div class="mt-3 text-xs text-slate-400 space-y-1">
-          <div>Data source: Bitget public APIs.</div>
-          <div>If you see CORS errors, enable the included serverless proxy (api/proxy.js) on Vercel.</div>
+        <div class="mt-3 text-xs text-slate-400">
+          <button id="validate" class="mt-2 bg-slate-600 p-2 rounded w-full">Validate API Keys (server-side)</button>
+          <div id="validateRes" class="mt-2 text-sm"></div>
         </div>
       </div>
 
-      <!-- Market panels -->
-      <div class="bg-slate-800 p-4 rounded-lg">
-        <div class="flex items-center justify-between mb-2">
-          <div class="text-xs text-slate-400">Market A</div>
-          <div id="metaA" class="text-xs text-slate-400 mono">-</div>
-        </div>
-        <div class="text-3xl font-semibold" id="priceA">—</div>
-        <div class="text-sm text-slate-400 mt-2">Updated: <span id="tsA">—</span></div>
-        <div class="mt-4 text-xs text-slate-300 log" id="logA">No data yet.</div>
-      </div>
-
-      <div class="bg-slate-800 p-4 rounded-lg">
-        <div class="flex items-center justify-between mb-2">
-          <div class="text-xs text-slate-400">Market B</div>
-          <div id="metaB" class="text-xs text-slate-400 mono">-</div>
-        </div>
-        <div class="text-3xl font-semibold" id="priceB">—</div>
-        <div class="text-sm text-slate-400 mt-2">Updated: <span id="tsB">—</span></div>
-        <div class="mt-4 text-xs text-slate-300 log" id="logB">No data yet.</div>
-      </div>
-
-      <!-- Spread card (full width) -->
-      <div class="md:col-span-3 bg-slate-800 p-4 rounded-lg">
-        <div class="flex items-center justify-between">
+      <div class="p-4 bg-slate-800 rounded col-span-2">
+        <div class="flex justify-between items-end">
           <div>
-            <div class="text-xs text-slate-400">Spread</div>
-            <div class="text-2xl font-semibold mt-1"><span id="spreadAbs">—</span> USD</div>
-            <div class="text-sm text-slate-300 mt-1">Percent: <span id="spreadPct">—</span> %</div>
+            <div class="text-sm text-slate-400">Market A</div>
+            <div class="text-3xl font-semibold" id="pA">—</div>
+            <div class="text-xs text-slate-400" id="tsA">—</div>
           </div>
-
-          <div class="text-right">
-            <div class="text-xs text-slate-400">Threshold (USD)</div>
-            <input id="threshold" type="number" value="20" class="mt-1 w-28 bg-slate-900 p-2 rounded text-sm text-right" />
-            <div class="mt-3">
-              <div class="inline-block px-3 py-2 rounded text-sm font-semibold" id="actionBadge">—</div>
-            </div>
+          <div>
+            <div class="text-sm text-slate-400">Market B</div>
+            <div class="text-3xl font-semibold" id="pB">—</div>
+            <div class="text-xs text-slate-400" id="tsB">—</div>
+          </div>
+          <div>
+            <div class="text-sm text-slate-400">Spread</div>
+            <div class="text-3xl font-semibold" id="spread">—</div>
+            <div class="text-xs text-slate-400" id="pct">—</div>
           </div>
         </div>
 
-        <div class="mt-4">
-          <div class="text-xs text-slate-400 mb-2">Event Log</div>
-          <div class="log mono" id="eventLog">No events yet.</div>
+        <div class="mt-4 flex gap-3">
+          <input id="threshold" value="20" class="p-2 bg-slate-900 rounded" />
+          <button id="takeSim" class="bg-emerald-500 p-2 rounded text-slate-900">Simulate Take</button>
+          <button id="takeLive" class="bg-red-600 p-2 rounded" title="Requires LIVE_TRADING=true and validated keys">Take Live</button>
         </div>
       </div>
-    </section>
+    </div>
 
-    <footer class="mt-6 text-sm text-slate-500">
-      Tip: Deploy to Vercel as a static site. If Bitget blocks direct browser requests, enable the optional serverless proxy (api/proxy.js).
-    </footer>
+    <div class="mt-6 grid md:grid-cols-2 gap-4">
+      <div>
+        <div class="text-sm text-slate-400 mb-2">Logs</div>
+        <div id="logs" class="log">No logs yet.</div>
+      </div>
+      <div>
+        <div class="text-sm text-slate-400 mb-2">Events</div>
+        <div id="events" class="log">No events yet.</div>
+      </div>
+    </div>
+
   </div>
 
 <script>
-  const api = `/api/price?symbol=${symbol.replace('/', '')}&type=${mode}`;
-const r = await fetch(api);
-const data = await r.json();
-
 (() => {
-  // Basic Bitget adapters and dashboard logic
   const el = id => document.getElementById(id);
-  let running = false;
   let loop = null;
+  let running = false;
 
-  // Helper: attempt direct fetch, fall back to /api/proxy?url=...
-  async function fetchWithProxy(url) {
-    try {
-      const res = await fetch(url, { cache: "no-store" });
-      if (!res.ok) throw new Error('non-ok');
-      const json = await res.json();
-      return { ok: true, json };
-    } catch (e) {
-      // fallback to proxy if available
-      try {
-        const prox = '/api/proxy?url=' + encodeURIComponent(url);
-        const r2 = await fetch(prox);
-        if (!r2.ok) throw new Error('proxy failed');
-        const j2 = await r2.json();
-        return { ok: true, json: j2 };
-      } catch (err) {
-        return { ok: false, error: err.message || err };
-      }
-    }
-  }
-
-  // Bitget spot ticker URL (public)
-  function bitgetSpotTicker(symbol) {
-    // convert BTC/USDT -> BTCUSDT
-    const pair = symbol.replace('/', '');
-    return `https://api.bitget.com/api/spot/v1/market/ticker?symbol=${pair}`;
-  }
-
-  // Bitget mix/futures ticker URL (public)
-  function bitgetFutTicker(symbol) {
-    // Bitget has various futures naming conventions; try common ones:
-    // 1) pair as-is: BTCUSDT (some endpoints expect suffix like _UMCBL)
-    // We'll attempt several endpoints and fall back.
-    const pair = symbol.replace('/', '');
-    // Official mix ticker endpoint:
-    return `https://api.bitget.com/api/mix/v1/market/ticker?symbol=${pair}`;
-  }
-
-  async function parseSpotTickerResponse(json) {
-    // Bitget spot often returns { code: '00000', data: { last: '...' } }
-    if (!json) return null;
-    const data = json.data || json;
-    // try various shapes
-    const last = data.last || data.lastPrice || (Array.isArray(data) && data[0]?.last) || data.close;
-    if (last) return parseFloat(last);
-    // sometimes object array contains fields
-    if (Array.isArray(json) && json[0] && json[0].last) return parseFloat(json[0].last);
-    return null;
-  }
-
-  async function parseFutTickerResponse(json) {
-    // Bitget mix response shapes vary: { code:'00000', data: { last: '...' } } or { data: { close: ... } }
-    if (!json) return null;
-    const data = json.data || json;
-    const last = data.last || data.close || data.price || (Array.isArray(data) && data[0]?.last);
-    if (last) return parseFloat(last);
-    return null;
-  }
-
-  async function fetchPrice(marketType, symbol) {
-    if (marketType === 'spot') {
-      const url = bitgetSpotTicker(symbol);
-      const r = await fetchWithProxy(url);
-      if (!r.ok) throw new Error('Spot fetch failed: ' + (r.error || 'unknown'));
-      const price = await parseSpotTickerResponse(r.json);
-      if (price == null) throw new Error('Spot parse failed');
-      return { price, ts: Date.now(), raw: r.json };
-    } else {
-      const url = bitgetFutTicker(symbol);
-      const r = await fetchWithProxy(url);
-      if (!r.ok) throw new Error('Fut fetch failed: ' + (r.error || 'unknown'));
-      const price = await parseFutTickerResponse(r.json);
-      if (price == null) throw new Error('Fut parse failed');
-      return { price, ts: Date.now(), raw: r.json };
-    }
-  }
-
-  function appendLog(elId, msg) {
-    const node = el(elId);
+  function log(msg) {
     const t = new Date().toLocaleTimeString();
-    node.textContent = `${t} ${msg}\n` + node.textContent;
+    el('logs').textContent = `${t} ${msg}\n` + el('logs').textContent;
+  }
+  function eventLog(msg) {
+    const t = new Date().toLocaleTimeString();
+    el('events').textContent = `${t} ${msg}\n` + el('events').textContent;
   }
 
-  async function tickOnce() {
-    const symbol = el('symbol').value;
-    const marketA = el('marketA').value; // 'spot' or 'future'
-    const marketB = el('marketB').value;
+  async function fetchPrice() {
+    const symbol = el('symbol').value.replace('/','');
+    const type = el('type').value; // spot-future etc
     try {
-      const [a, b] = await Promise.allSettled([fetchPrice(marketA, symbol), fetchPrice(marketB, symbol)]);
-      if (a.status === 'fulfilled') {
-        el('priceA').textContent = a.value.price.toFixed(2);
-        el('tsA').textContent = new Date(a.value.ts).toLocaleTimeString();
-        el('metaA').textContent = marketA === 'spot' ? 'Bitget Spot' : 'Bitget Futures';
-        appendLog('logA', `price ${a.value.price.toFixed(2)}`);
-      } else {
-        el('priceA').textContent = '—';
-        el('metaA').textContent = 'err';
-        appendLog('logA', `err: ${a.reason?.message || a.reason}`);
-      }
-
-      if (b.status === 'fulfilled') {
-        el('priceB').textContent = b.value.price.toFixed(2);
-        el('tsB').textContent = new Date(b.value.ts).toLocaleTimeString();
-        el('metaB').textContent = marketB === 'spot' ? 'Bitget Spot' : 'Bitget Futures';
-        appendLog('logB', `price ${b.value.price.toFixed(2)}`);
-      } else {
-        el('priceB').textContent = '—';
-        el('metaB').textContent = 'err';
-        appendLog('logB', `err: ${b.reason?.message || b.reason}`);
-      }
-
-      if (a.status === 'fulfilled' && b.status === 'fulfilled') {
-        const pA = a.value.price;
-        const pB = b.value.price;
-        const abs = Math.abs(pA - pB);
-        const pct = (abs / ((pA + pB) / 2)) * 100;
-        el('spreadAbs').textContent = abs.toFixed(2);
-        el('spreadPct').textContent = pct.toFixed(4);
-
-        const threshold = parseFloat(el('threshold').value || '20');
-        if (abs >= threshold) {
-          el('actionBadge').textContent = 'OPPORTUNITY';
-          el('actionBadge').className = 'inline-block px-3 py-2 rounded text-sm font-semibold bg-emerald-500 text-slate-900';
-          appendLog('eventLog', `ALERT: spread ${abs.toFixed(2)} (${pct.toFixed(4)}%) between ${marketA} & ${marketB}`);
-        } else {
-          el('actionBadge').textContent = 'No opportunity';
-          el('actionBadge').className = 'inline-block px-3 py-2 rounded text-sm font-semibold bg-slate-700 text-slate-200';
-        }
-      } else {
-        el('spreadAbs').textContent = '—';
-        el('spreadPct').textContent = '—';
-        el('actionBadge').textContent = 'Waiting...';
-        el('actionBadge').className = 'inline-block px-3 py-2 rounded text-sm font-semibold bg-yellow-600 text-slate-900';
+      const r = await fetch(`/api/price?symbol=${symbol}&type=${type}`);
+      if (!r.ok) throw new Error('price api failed');
+      const j = await r.json();
+      el('pA').textContent = j.priceA.toFixed(2);
+      el('pB').textContent = j.priceB.toFixed(2);
+      el('tsA').textContent = new Date(j.ts).toLocaleTimeString();
+      el('tsB').textContent = new Date(j.ts).toLocaleTimeString();
+      el('spread').textContent = j.spreadAbs.toFixed(2);
+      el('pct').textContent = j.spreadPct + '%';
+      log(`price fetched ${j.priceA} / ${j.priceB} spread ${j.spreadAbs}`);
+      const threshold = parseFloat(el('threshold').value || '20');
+      if (j.spreadAbs >= threshold) {
+        eventLog(`ARBITRAGE: spread ${j.spreadAbs} >= ${threshold}`);
       }
     } catch (e) {
-      appendLog('eventLog', 'Tick error: ' + (e.message || e));
+      log('price fetch error: ' + e.message);
     }
   }
 
-  el('startBtn').addEventListener('click', () => {
+  el('start').addEventListener('click', () => {
     if (running) return;
     running = true;
-    el('startBtn').disabled = true;
-    el('stopBtn').disabled = false;
-    const ms = parseInt(el('pollMs').value || '2000');
-    tickOnce();
-    loop = setInterval(tickOnce, ms);
-    appendLog('eventLog', `Started polling every ${ms}ms`);
+    el('start').disabled = true;
+    el('stop').disabled = false;
+    const ms = parseInt(el('poll').value || '2000');
+    fetchPrice();
+    loop = setInterval(fetchPrice, ms);
+    log('started polling');
   });
 
-  el('stopBtn').addEventListener('click', () => {
+  el('stop').addEventListener('click', () => {
     if (!running) return;
     running = false;
-    el('startBtn').disabled = false;
-    el('stopBtn').disabled = true;
+    el('start').disabled = false;
+    el('stop').disabled = true;
     clearInterval(loop);
-    appendLog('eventLog', `Stopped`);
+    log('stopped polling');
+  });
+
+  el('validate').addEventListener('click', async () => {
+    el('validateRes').textContent = 'validating...';
+    try {
+      const r = await fetch('/api/validate');
+      const j = await r.json();
+      el('validateRes').textContent = JSON.stringify(j);
+      if (j.ok) eventLog('API keys validated');
+      else eventLog('validate failed: ' + (j.error || JSON.stringify(j)));
+    } catch (e) {
+      el('validateRes').textContent = 'error: ' + e.message;
+      eventLog('validate error: ' + e.message);
+    }
+  });
+
+  el('takeSim').addEventListener('click', async () => {
+    // simulate take: front-end will not place live orders, just log event
+    eventLog('Simulated taking arbitrage (no orders placed)');
+  });
+
+  el('takeLive').addEventListener('click', async () => {
+    if (!confirm('Proceed with live order? This requires LIVE_TRADING=true and valid keys.')) return;
+    const symbol = el('symbol').value;
+    const amount = prompt('Amount (base asset qty, e.g., 0.001):', '0.001');
+    const side = prompt('side buy or sell', 'buy');
+    try {
+      const r = await fetch('/api/trade', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ symbol, side, amount, marketType: 'spot' })
+      });
+      const j = await r.json();
+      eventLog('trade result: ' + JSON.stringify(j));
+    } catch (e) {
+      eventLog('trade error: ' + e.message);
+    }
   });
 
 })();
