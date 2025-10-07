@@ -1,0 +1,13 @@
+{
+  "name": "bitget-arb-vercel",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "start": "vercel dev"
+  },
+  "dependencies": {
+    "ccxt": "^2.0.0",
+    "node-fetch": "^2.6.7",
+    "dotenv": "^16.0.0"
+  }
+}
